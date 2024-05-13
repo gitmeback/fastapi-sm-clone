@@ -38,7 +38,7 @@ pyasn1==0.4.8
 pycodestyle==2.7.0
 pycparser==2.20
 pydantic==1.8.2
-pydantic-extra-types==2.7.0
+pydantic-extra-types
 pydantic-settings==2.2.1
 pydantic_core==2.18.2
 python-dateutil==2.8.2
