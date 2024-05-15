@@ -58,7 +58,7 @@ def get_posts(id: int, db: Session = Depends(get_db),
 
     if not post:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"Post with ID: {id} was not found!")
+                            detail=f"Post with ID: {id} was not found")
 
     return post
 
@@ -75,7 +75,7 @@ def delete_posts(id: int, db: Session = Depends(get_db),
 
     if post is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"Post with ID: {id} does not fucking exist dumb ass!")
+                            detail=f"Post with ID: {id} does not fucking exist dumb ass")
     if post.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to perform requested action")
 
@@ -99,7 +99,7 @@ def update_post(id: int, updated_post: schemas.PostCreate, db: Session = Depends
 
     if post is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail=f"Post with ID: {id} does not fucking exist dumb ass!")
+                            detail=f"Post with ID: {id} does not fucking exist dumb ass")
     if post.owner_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to perform requested action")
 
