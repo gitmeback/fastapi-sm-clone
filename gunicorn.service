@@ -5,10 +5,10 @@ After=network.target
 [Service]
 User=dev
 Group=dev
-WorkingDirectory=/home/workspace/python/fastapi_demo
+WorkingDirectory=/home/workspace/python/fastapi_demo/src/
 Environment="PATH=/home/workspace/python/fastapi_demo/venv/bin"
 EnvironmentFile=/home/dev/.env
-ExecStart=/home/workspace/python/fastapi_demo/venv/bin/gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000
+ExecStart=/home/dev/workspace/python/fastapi_demo/venv/bin/gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:8000
 
 [Install]
 WantedBy=multi-user.target
