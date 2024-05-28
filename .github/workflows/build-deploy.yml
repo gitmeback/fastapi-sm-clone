@@ -82,13 +82,13 @@ jobs:
           heroku_app_name: ${{ secrets.HEROKU_APP }}
           heroku_email: ${{ secrets.HEROKU_EMAIL }}
 
-      - name: Deploy to ubuntu server
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USERNAME }}
-          password: ${{ secrets.PROD_PASSWORD }}
-          script: |
-            cd app/src
-            git pull
-            sudo systemctl restart api
+#      - name: Deploy to ubuntu server
+#        uses: appleboy/ssh-action@v1.0.3
+#        with:
+#          host: ${{ secrets.PROD_HOST }}
+#          username: ${{ secrets.PROD_USERNAME }}
+#          password: ${{ secrets.PROD_PASSWORD }}
+#          script: |
+#            cd app/src
+#            git pull
+#            sudo systemctl restart api
