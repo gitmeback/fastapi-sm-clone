@@ -2,7 +2,7 @@ name: Build and Deploy Code
 
 on: [push, pull_request]
 jobs:
-  job1:
+  build:
     environment:
       name: testing
     env:
@@ -62,7 +62,7 @@ jobs:
           file: ./Dockerfile
           builder: ${{ steps.buildx.outputs.name }}
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/fastapi:latest
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/fastapi-sm-clone:latest
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
       - name: Image digest
