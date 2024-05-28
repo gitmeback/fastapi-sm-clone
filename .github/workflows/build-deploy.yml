@@ -27,7 +27,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
+    app:
+      build: .
+      command: bash -c "cd app/database && alembic upgrade head"
     runs-on: ubuntu-latest
     steps:
       - name: pulling git repo
