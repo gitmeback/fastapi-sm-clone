@@ -83,6 +83,11 @@ def fix_declaration_pool_names(declaration: Dict[str, Any]) -> Tuple[Dict[str, A
 def post_f5_declaration(gtm_url: str, declaration: Dict[str, Any]) -> None:
     """Post the updated declaration back to the F5 GTM."""
     url = f"https://{gtm_url}/mgmt/shared/appsvcs/declare"
+    # Save the declaration being posted for debugging
+    with open("f5_declaration_posted.json", "w") as f:
+        json.dump(declaration, f, indent=2)
+    print("Saved declaration being posted to f5_declaration_posted.json")
+
     try:
         response = requests.post(
             url,
@@ -91,17 +96,19 @@ def post_f5_declaration(gtm_url: str, declaration: Dict[str, Any]) -> None:
             verify=False
         )
         response.raise_for_status()
-        print(f"Declaration successfully updated on F5 GTM at {gtm_url}")
+        print(f"POST request to {gtm_url} returned status code: {response.status_code}")
+        print("Full response from F5:")
         if response.text:
-            print("Response from F5:")
             print(json.dumps(response.json(), indent=2))
+        else:
+            print("  (No response body)")
     except requests.RequestException as e:
         raise Exception(f"Failed to post declaration to {gtm_url}: {str(e)}")
 
 
 def save_json_file(data: Dict[str, Any], filename: str) -> None:
     """Save a dictionary to a JSON file."""
-    with open(filename, 'w') as f:
+    with open(filename, "w") as f:
         json.dump(data, f, indent=2)
     print(f"Saved {filename}")
 
@@ -141,6 +148,7 @@ def main(gtm_url: str) -> None:
         if pool_name_mapping:  # Only post if changes were made
             print(f"Posting corrected declaration to {gtm_url}...")
             post_f5_declaration(gtm_url, fixed_declaration)
+            print("Declaration submitted. Please verify the F5 GTM UI or logs to confirm the update.")
         else:
             print("No changes to post to F5 GTM.")
 
