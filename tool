@@ -80,19 +80,39 @@ def fix_declaration_pool_names(declaration: Dict[str, Any]) -> Tuple[Dict[str, A
     return updated_declaration, pool_name_mapping
 
 
-def post_f5_declaration(gtm_url: str, declaration: Dict[str, Any]) -> None:
+def wrap_declaration_for_post(fixed_declaration: Dict[str, Any], original_declaration: Dict[str, Any]) -> Dict[str, Any]:
+    """Wrap the fixed declaration in an AS3 envelope similar to the migration tool."""
+    # Start with the original top-level structure to preserve metadata
+    as3_envelope = {
+        "class": original_declaration.get("class", "AS3"),
+        "action": original_declaration.get("action", "deploy"),
+        "persist": original_declaration.get("persist", False),
+        "declaration": fixed_declaration.get("declaration", fixed_declaration)
+    }
+    # Ensure the declaration key is present and correctly nested
+    if "declaration" not in fixed_declaration:
+        as3_envelope["declaration"] = fixed_declaration
+    return as3_envelope
+
+
+def post_f5_declaration(gtm_url: str, declaration: Dict[str, Any], original_declaration: Dict[str, Any]) -> None:
     """Post the updated declaration back to the F5 GTM."""
     url = f"https://{gtm_url}/mgmt/shared/appsvcs/declare"
+    # Wrap the declaration in the AS3 envelope
+    payload = wrap_declaration_for_post(declaration, original_declaration)
+    
     # Save the declaration being posted for debugging
     with open("f5_declaration_posted.json", "w") as f:
-        json.dump(declaration, f, indent=2)
+        json.dump(payload, f, indent=2)
     print("Saved declaration being posted to f5_declaration_posted.json")
 
     try:
+        headers = {"Content-Type": "application/json"}
         response = requests.post(
             url,
             auth=(F5_GTM_USERNAME, F5_GTM_PASSWORD),
-            json=declaration,
+            json=payload,
+            headers=headers,
             verify=False
         )
         response.raise_for_status()
@@ -147,7 +167,7 @@ def main(gtm_url: str) -> None:
         # Post the corrected declaration back to the F5 GTM
         if pool_name_mapping:  # Only post if changes were made
             print(f"Posting corrected declaration to {gtm_url}...")
-            post_f5_declaration(gtm_url, fixed_declaration)
+            post_f5_declaration(gtm_url, fixed_declaration, current_declaration)
             print("Declaration submitted. Please verify the F5 GTM UI or logs to confirm the update.")
         else:
             print("No changes to post to F5 GTM.")
