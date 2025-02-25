@@ -55,59 +55,62 @@ def fix_declaration_pool_names(declaration: Dict[str, Any]) -> Tuple[Dict[str, A
                 continue
 
             # Identify pools and prepare updates
-            pools_to_update = {}
+            pools_to_add = {}
+            existing_pools = set()
             for item_name, item in app.items():
                 if isinstance(item, dict) and item.get("class") == "GSLB_Pool":
+                    existing_pools.add(item_name)
                     if "-" in item_name:
                         new_pool_name = normalize_name(item_name)
                         pool_name_mapping[item_name] = new_pool_name
-                        pools_to_update[new_pool_name] = item
+                        pools_to_add[new_pool_name] = item.copy()  # Add new pool without removing old yet
 
             # Update pool references in GSLB_Domain
             for domain_item_name, domain_item in app.items():
                 if isinstance(domain_item, dict) and domain_item.get("class") == "GSLB_Domain":
                     if "pools" in domain_item:
                         for pool in domain_item["pools"]:
-                            if "use" in pool and pool["use"] in pool_name_mapping:
-                                pool["use"] = pool_name_mapping[pool["use"]]
+                            if "use" in pool:
+                                if pool["use"] in pool_name_mapping:
+                                    pool["use"] = pool_name_mapping[pool["use"]]
+                                elif pool["use"] not in existing_pools and pool["use"] not in pools_to_add:
+                                    print(f"Warning: GSLB_Domain references nonexistent pool: {pool['use']} in {tenant_name}/{app_name}")
 
-            # Apply pool name updates by removing old and adding new
-            for old_name in pool_name_mapping.keys():
-                if old_name in app:
-                    del app[old_name]
-            app.update(pools_to_update)
+            # Add new pools without deleting old ones yet
+            app.update(pools_to_add)
 
     return updated_declaration, pool_name_mapping
 
 
 def wrap_declaration_for_post(fixed_declaration: Dict[str, Any], original_declaration: Dict[str, Any]) -> Dict[str, Any]:
-    """Wrap the fixed declaration in an AS3 envelope similar to the migration tool."""
-    # Start with the original top-level structure to preserve metadata
+    """Wrap the fixed declaration in an AS3 envelope."""
     as3_envelope = {
-        "class": original_declaration.get("class", "AS3"),
-        "action": original_declaration.get("action", "deploy"),
-        "persist": original_declaration.get("persist", False),
+        "class": "AS3",
+        "action": "deploy",
+        "persist": False,
+        "async": True,
         "declaration": fixed_declaration.get("declaration", fixed_declaration)
     }
-    # Ensure the declaration key is present and correctly nested
-    if "declaration" not in fixed_declaration:
-        as3_envelope["declaration"] = fixed_declaration
+    if "declaration" in original_declaration:
+        declaration_root = as3_envelope["declaration"]
+        if "schemaVersion" in original_declaration["declaration"]:
+            declaration_root["schemaVersion"] = original_declaration["declaration"]["schemaVersion"]
+        declaration_root["updateMode"] = "complete"  # Force full update
     return as3_envelope
 
 
 def post_f5_declaration(gtm_url: str, declaration: Dict[str, Any], original_declaration: Dict[str, Any]) -> None:
     """Post the updated declaration back to the F5 GTM."""
     url = f"https://{gtm_url}/mgmt/shared/appsvcs/declare"
-    # Wrap the declaration in the AS3 envelope
     payload = wrap_declaration_for_post(declaration, original_declaration)
     
-    # Save the declaration being posted for debugging
     with open("f5_declaration_posted.json", "w") as f:
         json.dump(payload, f, indent=2)
     print("Saved declaration being posted to f5_declaration_posted.json")
 
     try:
         headers = {"Content-Type": "application/json"}
+        print(f"Posting to {url} with headers: {headers}")
         response = requests.post(
             url,
             auth=(F5_GTM_USERNAME, F5_GTM_PASSWORD),
@@ -122,6 +125,8 @@ def post_f5_declaration(gtm_url: str, declaration: Dict[str, Any], original_decl
             print(json.dumps(response.json(), indent=2))
         else:
             print("  (No response body)")
+        if response.json().get("code") in (0, 404):
+            print("Warning: Response indicates a potential issue with the declaration.")
     except requests.RequestException as e:
         raise Exception(f"Failed to post declaration to {gtm_url}: {str(e)}")
 
@@ -136,27 +141,21 @@ def save_json_file(data: Dict[str, Any], filename: str) -> None:
 def main(gtm_url: str) -> None:
     """Main function to fetch, backup, fix, and update the F5 GTM declaration."""
     try:
-        # Check environment variables
         if not all([gtm_url, F5_GTM_USERNAME, F5_GTM_PASSWORD]):
             raise ValueError("Missing required environment variables: F5_GTM_URL, F5_GTM_USERNAME, F5_GTM_PASSWORD")
 
-        # Fetch the current declaration
         print(f"Fetching declaration from {gtm_url}...")
         current_declaration = fetch_f5_declaration(gtm_url)
 
-        # Save a backup
         backup_filename = "f5_declaration_backup.json"
         save_json_file(current_declaration, backup_filename)
 
-        # Fix pool names and get the mapping
         print("Fixing pool names in declaration...")
         fixed_declaration, pool_name_mapping = fix_declaration_pool_names(current_declaration)
 
-        # Save the corrected declaration
         corrected_filename = "f5_declaration_corrected.json"
         save_json_file(fixed_declaration, corrected_filename)
 
-        # Print changes for verification
         if pool_name_mapping:
             print("Changes made to pool names:")
             for old_name, new_name in pool_name_mapping.items():
@@ -164,11 +163,10 @@ def main(gtm_url: str) -> None:
         else:
             print("No pool names required updates.")
 
-        # Post the corrected declaration back to the F5 GTM
-        if pool_name_mapping:  # Only post if changes were made
+        if pool_name_mapping:
             print(f"Posting corrected declaration to {gtm_url}...")
             post_f5_declaration(gtm_url, fixed_declaration, current_declaration)
-            print("Declaration submitted. Please verify the F5 GTM UI or logs to confirm the update.")
+            print("Declaration submitted. Please verify the F5 GTM UI or logs at /var/log/ltm to confirm the update.")
         else:
             print("No changes to post to F5 GTM.")
 
