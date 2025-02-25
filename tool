@@ -3,7 +3,6 @@ import json
 import requests
 import urllib3
 from typing import Dict, Any
-import re
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -39,16 +38,23 @@ def fix_declaration_pool_names(declaration: Dict[str, Any]) -> Dict[str, Any]:
     updated_declaration = declaration.copy()
     pool_name_mapping = {}  # Track old-to-new pool name changes
 
-    # Iterate through tenants and applications
-    for tenant_name, tenant in updated_declaration.get("declaration", {}).items():
+    # Ensure we're working with the full AS3 declaration structure
+    if "declaration" in updated_declaration:
+        declaration_root = updated_declaration["declaration"]
+    else:
+        declaration_root = updated_declaration
+
+    # Iterate through tenants
+    for tenant_name, tenant in declaration_root.items():
         if not isinstance(tenant, dict) or tenant.get("class") != "Tenant":
             continue
 
+        # Iterate through applications within the tenant
         for app_name, app in tenant.items():
             if not isinstance(app, dict) or app.get("class") != "Application":
                 continue
 
-            # Identify and rename pools
+            # Identify pools and prepare updates
             pools_to_update = {}
             for item_name, item in app.items():
                 if isinstance(item, dict) and item.get("class") == "GSLB_Pool":
@@ -65,7 +71,7 @@ def fix_declaration_pool_names(declaration: Dict[str, Any]) -> Dict[str, Any]:
                             if "use" in pool and pool["use"] in pool_name_mapping:
                                 pool["use"] = pool_name_mapping[pool["use"]]
 
-            # Replace old pool names with new ones
+            # Apply pool name updates by removing old and adding new
             for old_name in pool_name_mapping.keys():
                 if old_name in app:
                     del app[old_name]
@@ -104,7 +110,15 @@ def main(gtm_url: str) -> None:
         corrected_filename = "f5_declaration_corrected.json"
         save_json_file(fixed_declaration, corrected_filename)
 
-        # Optional: Uncomment the following to update the F5 GTM
+        # Print changes for verification
+        if fixed_declaration != current_declaration:
+            print("Changes made to pool names:")
+            for old_name, new_name in pool_name_mapping.items():
+                print(f"  {old_name} -> {new_name}")
+        else:
+            print("No pool names required updates.")
+
+        # Optional: Uncomment to update the F5 GTM
         # print("Posting corrected declaration to F5 GTM...")
         # url = f"https://{gtm_url}/mgmt/shared/appsvcs/declare"
         # response = requests.post(
