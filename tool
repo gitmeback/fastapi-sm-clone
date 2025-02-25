@@ -80,6 +80,25 @@ def fix_declaration_pool_names(declaration: Dict[str, Any]) -> Tuple[Dict[str, A
     return updated_declaration, pool_name_mapping
 
 
+def post_f5_declaration(gtm_url: str, declaration: Dict[str, Any]) -> None:
+    """Post the updated declaration back to the F5 GTM."""
+    url = f"https://{gtm_url}/mgmt/shared/appsvcs/declare"
+    try:
+        response = requests.post(
+            url,
+            auth=(F5_GTM_USERNAME, F5_GTM_PASSWORD),
+            json=declaration,
+            verify=False
+        )
+        response.raise_for_status()
+        print(f"Declaration successfully updated on F5 GTM at {gtm_url}")
+        if response.text:
+            print("Response from F5:")
+            print(json.dumps(response.json(), indent=2))
+    except requests.RequestException as e:
+        raise Exception(f"Failed to post declaration to {gtm_url}: {str(e)}")
+
+
 def save_json_file(data: Dict[str, Any], filename: str) -> None:
     """Save a dictionary to a JSON file."""
     with open(filename, 'w') as f:
@@ -88,7 +107,7 @@ def save_json_file(data: Dict[str, Any], filename: str) -> None:
 
 
 def main(gtm_url: str) -> None:
-    """Main function to fetch, backup, and fix the F5 GTM declaration."""
+    """Main function to fetch, backup, fix, and update the F5 GTM declaration."""
     try:
         # Check environment variables
         if not all([gtm_url, F5_GTM_USERNAME, F5_GTM_PASSWORD]):
@@ -118,17 +137,12 @@ def main(gtm_url: str) -> None:
         else:
             print("No pool names required updates.")
 
-        # Optional: Uncomment to update the F5 GTM
-        # print("Posting corrected declaration to F5 GTM...")
-        # url = f"https://{gtm_url}/mgmt/shared/appsvcs/declare"
-        # response = requests.post(
-        #     url,
-        #     auth=(F5_GTM_USERNAME, F5_GTM_PASSWORD),
-        #     json=fixed_declaration,
-        #     verify=False
-        # )
-        # response.raise_for_status()
-        # print("Declaration updated successfully on F5 GTM!")
+        # Post the corrected declaration back to the F5 GTM
+        if pool_name_mapping:  # Only post if changes were made
+            print(f"Posting corrected declaration to {gtm_url}...")
+            post_f5_declaration(gtm_url, fixed_declaration)
+        else:
+            print("No changes to post to F5 GTM.")
 
     except Exception as e:
         print(f"Error: {str(e)}")
