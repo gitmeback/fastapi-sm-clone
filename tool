@@ -2,7 +2,7 @@ import os
 import json
 import requests
 import urllib3
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -33,7 +33,7 @@ def normalize_name(name: str) -> str:
     return name.replace("-", "_")
 
 
-def fix_declaration_pool_names(declaration: Dict[str, Any]) -> Dict[str, Any]:
+def fix_declaration_pool_names(declaration: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, str]]:
     """Fix pool names in the declaration by replacing hyphens with underscores."""
     updated_declaration = declaration.copy()
     pool_name_mapping = {}  # Track old-to-new pool name changes
@@ -77,7 +77,7 @@ def fix_declaration_pool_names(declaration: Dict[str, Any]) -> Dict[str, Any]:
                     del app[old_name]
             app.update(pools_to_update)
 
-    return updated_declaration
+    return updated_declaration, pool_name_mapping
 
 
 def save_json_file(data: Dict[str, Any], filename: str) -> None:
@@ -102,16 +102,16 @@ def main(gtm_url: str) -> None:
         backup_filename = "f5_declaration_backup.json"
         save_json_file(current_declaration, backup_filename)
 
-        # Fix pool names
+        # Fix pool names and get the mapping
         print("Fixing pool names in declaration...")
-        fixed_declaration = fix_declaration_pool_names(current_declaration)
+        fixed_declaration, pool_name_mapping = fix_declaration_pool_names(current_declaration)
 
         # Save the corrected declaration
         corrected_filename = "f5_declaration_corrected.json"
         save_json_file(fixed_declaration, corrected_filename)
 
         # Print changes for verification
-        if fixed_declaration != current_declaration:
+        if pool_name_mapping:
             print("Changes made to pool names:")
             for old_name, new_name in pool_name_mapping.items():
                 print(f"  {old_name} -> {new_name}")
