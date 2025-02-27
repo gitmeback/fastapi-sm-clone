@@ -13,9 +13,9 @@ F5_GTM_USERNAME = os.getenv("F5_GTM_USERNAME")
 F5_GTM_PASSWORD = os.getenv("F5_GTM_PASSWORD")
 
 
-def fetch_f5_declaration(gtm_url: str) -> Dict[str, Any]:
-    """Fetch the current AS3 declaration from F5 GTM."""
-    url = f"https://{gtm_url}/mgmt/shared/appsvcs/declare"
+def fetch_f5_declaration(gtm_url: str, full: bool = True) -> Dict[str, Any]:
+    """Fetch the current AS3 declaration from F5 GTM with optional full details."""
+    url = f"https://{gtm_url}/mgmt/shared/appsvcs/declare{'?show=full' if full else ''}"
     try:
         response = requests.get(url, auth=(F5_GTM_USERNAME, F5_GTM_PASSWORD), verify=False)
         response.raise_for_status()
@@ -63,6 +63,10 @@ def fix_declaration_pool_names(declaration: Dict[str, Any], target_tenant: str =
             existing_pools = set(app.keys())
             for item_name, item in app.items():
                 if isinstance(item, dict) and item.get("class") == "GSLB_Pool":
+                    if "members" not in item or not item["members"]:
+                        print(f"Warning: Pool {item_name} in {tenant_name}/{app_name} has no members!")
+                    else:
+                        print(f"Pool {item_name} members: {json.dumps(item['members'], indent=2)}")
                     if "-" in item_name:
                         new_pool_name = normalize_name(item_name)
                         pool_name_mapping[item_name] = new_pool_name
@@ -103,38 +107,8 @@ def wrap_declaration_for_post(fixed_declaration: Dict[str, Any], original_declar
     return as3_envelope
 
 
-def patch_gtm_wideip(gtm_url: str, wideip_name: str, old_pool: str, new_pool: str) -> None:
-    """Patch a WideIP to update its pool reference."""
-    url = f"https://{gtm_url}/mgmt/tm/gtm/wideip/a/{wideip_name}"
-    try:
-        # Fetch current WideIP config
-        response = requests.get(url, auth=(F5_GTM_USERNAME, F5_GTM_PASSWORD), verify=False)
-        response.raise_for_status()
-        wideip_config = response.json()
-
-        # Update pool reference
-        if "pools" in wideip_config:
-            for pool in wideip_config["pools"]:
-                if pool["name"] == old_pool:
-                    pool["name"] = new_pool
-                    break
-
-        # Patch the WideIP
-        response = requests.patch(
-            url,
-            auth=(F5_GTM_USERNAME, F5_GTM_PASSWORD),
-            json=wideip_config,
-            headers={"Content-Type": "application/json"},
-            verify=False
-        )
-        response.raise_for_status()
-        print(f"Successfully patched WideIP {wideip_name} to reference {new_pool}")
-    except requests.RequestException as e:
-        print(f"Failed to patch WideIP {wideip_name}: {str(e)}")
-
-
 def post_f5_declaration(gtm_url: str, declaration: Dict[str, Any], original_declaration: Dict[str, Any], pool_mapping: Dict[str, str]) -> None:
-    """Post the updated declaration and patch WideIPs if needed."""
+    """Post the updated declaration back to the F5 GTM."""
     url = f"https://{gtm_url}/mgmt/shared/appsvcs/declare"
     payload = wrap_declaration_for_post(declaration, original_declaration)
     
@@ -159,15 +133,8 @@ def post_f5_declaration(gtm_url: str, declaration: Dict[str, Any], original_decl
             print(json.dumps(response.json(), indent=2))
         else:
             print("  (No response body)")
-        if response.json().get("code") in (0, 404):
-            print("Warning: Response indicates a potential issue. Attempting WideIP patch...")
-            wideips = fetch_gtm_wideips(gtm_url)
-            for old_pool, new_pool in pool_mapping.items():
-                for item in wideips.get("items", []):
-                    wideip_name = item["name"]
-                    for pool in item.get("pools", []):
-                        if pool["name"] == f"/fringe_bm_com/aaa_preprod_albs_gslb_fringe_bm_com/{old_pool}":
-                            patch_gtm_wideip(gtm_url, wideip_name, old_pool, new_pool)
+        if response.json().get("code") == 0:
+            print("Warning: Response code 0 may indicate no changes were applied.")
     except requests.RequestException as e:
         raise Exception(f"Failed to post declaration to {gtm_url}: {str(e)}")
 
@@ -185,8 +152,8 @@ def main(gtm_url: str, target_tenant: str = "fringe_bm_com") -> None:
         if not all([gtm_url, F5_GTM_USERNAME, F5_GTM_PASSWORD]):
             raise ValueError("Missing required environment variables")
 
-        print(f"Fetching declaration from {gtm_url}...")
-        current_declaration = fetch_f5_declaration(gtm_url)
+        print(f"Fetching declaration from {gtm_url} with show=full...")
+        current_declaration = fetch_f5_declaration(gtm_url, full=True)
 
         print("Fetching WideIPs for debugging...")
         wideips = fetch_gtm_wideips(gtm_url)
@@ -212,7 +179,7 @@ def main(gtm_url: str, target_tenant: str = "fringe_bm_com") -> None:
             print(f"Posting corrected declaration to {gtm_url}...")
             post_f5_declaration(gtm_url, fixed_declaration, current_declaration, pool_name_mapping)
             print("Declaration submitted. Verify the F5 GTM UI or logs at /var/log/ltm.")
-            print("Check f5_wideips.json for WideIP pool references.")
+            print("Check f5_declaration_posted.json to ensure pool members are included.")
         else:
             print("No changes to post to F5 GTM.")
 
